@@ -1,0 +1,69 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { getModel, runVisionAnalysis } from '../src/llm.js';
+import * as aiModule from 'ai';
+
+vi.mock('ai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('ai')>();
+  return {
+    ...actual,
+    generateText: vi.fn(),
+  };
+});
+
+describe('LLM Module', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    delete process.env.BASE_URL;
+    delete process.env.PROVIDER;
+    delete process.env.DEFAULT_MODEL;
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+    vi.clearAllMocks();
+  });
+
+  it('should throw error when API_KEY is missing', () => {
+    delete process.env.API_KEY;
+    expect(() => getModel()).toThrow('Missing API_KEY');
+  });
+
+  it('should initialize OpenRouter from API_KEY', () => {
+    process.env.API_KEY = 'sk-or-universal-key';
+    const result = getModel();
+    expect(result.provider).toBe('openrouter');
+    expect(result.model).toBeDefined();
+  });
+
+  it('should call generateText and format result', async () => {
+    process.env.API_KEY = 'sk-proj-mock-key';
+
+    vi.mocked(aiModule.generateText).mockResolvedValueOnce({
+      text: 'A photo of a blue sailboat on clear water.',
+      usage: {
+        inputTokens: 120,
+        outputTokens: 15,
+        totalTokens: 135,
+      },
+    } as any);
+
+    const fakeImage = {
+      image: new Uint8Array([1, 2, 3]),
+      mimeType: 'image/png',
+      sourceType: 'local' as const,
+    };
+
+    const res = await runVisionAnalysis({
+      prompt: 'Describe the vessel in this image',
+      images: [fakeImage],
+    });
+
+    expect(res.text).toBe('A photo of a blue sailboat on clear water.');
+    expect(res.provider).toBe('openai');
+    expect(res.model).toBe('gpt-4o');
+    expect(res.usage?.totalTokens).toBe(135);
+    expect(aiModule.generateText).toHaveBeenCalledTimes(1);
+  });
+});
