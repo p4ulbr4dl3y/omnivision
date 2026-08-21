@@ -24,4 +24,6 @@ export interface AppConfig {
   sdk: SupportedSdk;
   defaultMaxTokens: number;
   defaultSystemPrompt: string;
+  maxRetries: number;
+  retryDelayMs: number;
 }

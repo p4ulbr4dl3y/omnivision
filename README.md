@@ -18,23 +18,42 @@ Fast, universal MCP server for multimodal image analysis using any vision LLM.
       "args": ["-y", "omnivision"],
       "env": {
         "API_KEY": "your-api-key",
-        "SDK": "openai | anthropic | google",
+        "DEFAULT_MODEL": "your-model-name",
+        "SDK": "openai",
         "BASE_URL": "optional-base-url",
-        "DEFAULT_MODEL": "optional-model-name",
         "DEFAULT_MAX_TOKENS": "4096",
-        "DEFAULT_SYSTEM_PROMPT": "optional-system-prompt"
+        "DEFAULT_SYSTEM_PROMPT": "You are an expert multimodal computer vision assistant...",
+        "MAX_RETRIES": "3",
+        "RETRY_DELAY_MS": "1000",
+        "REQUEST_TIMEOUT_MS": "120000"
       }
     }
   }
 }
 ```
 
+### Environment Variables
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `DEFAULT_MODEL` | *(required)* | Model name (e.g. `gpt-4o`, `claude-3-5-sonnet-20241022`, `gemini-1.5-flash`, `llava`) |
+| `API_KEY` | *(required\**)* | API key for LLM provider (*not required if `BASE_URL` is provided) |
+| `SDK` | `openai` | SDK provider: `openai`, `anthropic`, `google` |
+| `BASE_URL` | *(none)* | Custom base URL (e.g. `https://openrouter.ai/api/v1` or `http://localhost:11434/v1`) |
+| `DEFAULT_MAX_TOKENS` | `4096` | Max output tokens |
+| `DEFAULT_SYSTEM_PROMPT` | `"You are an expert multimodal computer vision assistant..."` | Default system prompt |
+| `MAX_RETRIES` | `3` | Max retry attempts on transient errors (network, 5xx, 429, invalid JSON) |
+| `RETRY_DELAY_MS` | `1000` | Initial exponential backoff delay in ms |
+| `REQUEST_TIMEOUT_MS` | `120000` | Request timeout in ms (120s) |
+
 ### Examples
 
-#### OpenRouter (Auto-detected from `sk-or-` key)
+#### OpenRouter
 ```json
 "env": {
-  "API_KEY": "sk-or-v1-..."
+  "API_KEY": "sk-or-v1-...",
+  "BASE_URL": "https://openrouter.ai/api/v1",
+  "DEFAULT_MODEL": "meta-llama/llama-3.2-11b-vision-instruct:free"
 }
 ```
 
@@ -49,6 +68,7 @@ Fast, universal MCP server for multimodal image analysis using any vision LLM.
 #### Anthropic Claude
 ```json
 "env": {
+  "SDK": "anthropic",
   "API_KEY": "sk-ant-...",
   "DEFAULT_MODEL": "claude-3-5-sonnet-20241022"
 }
@@ -57,6 +77,7 @@ Fast, universal MCP server for multimodal image analysis using any vision LLM.
 #### Google Gemini
 ```json
 "env": {
+  "SDK": "google",
   "API_KEY": "AIzaSy...",
   "DEFAULT_MODEL": "gemini-1.5-flash"
 }
