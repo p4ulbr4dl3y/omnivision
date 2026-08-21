@@ -28,6 +28,8 @@ describe('Config Module', () => {
     expect(inferProvider(undefined, 'gemini-1.5-flash')).toBe('google');
     expect(inferProvider(undefined, 'gpt-4o')).toBe('openai');
     expect(inferProvider(undefined, 'llava:latest')).toBe('ollama');
+    expect(inferProvider(undefined, undefined, 'http://localhost:11434/v1')).toBe('ollama');
+    expect(inferProvider(undefined, undefined, 'http://localhost:8000/v1')).toBe('custom');
   });
 
   it('should auto-detect OpenRouter from API_KEY prefix', () => {

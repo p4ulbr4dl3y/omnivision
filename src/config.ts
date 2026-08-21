@@ -21,7 +21,10 @@ export function inferProvider(apiKey?: string, model?: string, baseUrl?: string)
   }
 
   if (apiKey?.startsWith('sk-')) return 'openai';
-  if (baseUrl) return 'custom';
+  if (baseUrl) {
+    if (baseUrl.includes('11434') || baseUrl.includes('ollama')) return 'ollama';
+    return 'custom';
+  }
 
   return 'openrouter';
 }
