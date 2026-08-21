@@ -27,7 +27,7 @@
       "preset": "recommended",
       "suspicious": {
         "noExplicitAny": "error",
-        "noConsole": { "level": "off", "options": { "allow": ["log"] } }
+        "noConsole": { "level": "error", "options": { "allow": ["warn", "error", "info"] } }
       },
       "style": {
         "noNonNullAssertion": "warn",

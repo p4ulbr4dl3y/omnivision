@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { ProcessedImage } from './types.js';
 
-// Проверка по magic-bytes, а не по расширению — защита от чтения не-картинок.
+// Magic-bytes sniffing instead of file extension to verify valid image payloads.
 function sniffImageMime(buf: Uint8Array): string | null {
   if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47)
     return 'image/png';
@@ -43,8 +43,11 @@ function sniffImageMime(buf: Uint8Array): string | null {
 export const MAX_IMAGE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB max per image
 
 export function resolveHomePath(filePath: string): string {
-  if (filePath.startsWith('~/') || filePath === '~') {
-    return path.join(os.homedir(), filePath.slice(1));
+  if (filePath === '~') {
+    return os.homedir();
+  }
+  if (filePath.startsWith('~/') || filePath.startsWith('~\\')) {
+    return path.join(os.homedir(), filePath.slice(2));
   }
   return filePath;
 }
@@ -86,14 +89,50 @@ export function parseDataUrl(dataUrl: string): ProcessedImage {
     throw new Error(`Base64 image exceeds ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)}MB size limit.`);
   }
 
+  const detectedMime = sniffImageMime(new Uint8Array(buffer));
+  if (!detectedMime) {
+    throw new Error('Decoded base64 data is not a recognized image format.');
+  }
+
   return {
     image: new Uint8Array(buffer),
-    mimeType,
+    mimeType: detectedMime,
     sourceType: 'base64',
   };
 }
 
+function isPrivateOrLoopbackHost(hostname: string): boolean {
+  const lower = hostname.toLowerCase();
+  if (
+    lower === 'localhost' ||
+    lower === '127.0.0.1' ||
+    lower === '0.0.0.0' ||
+    lower === '::1' ||
+    lower === '169.254.169.254'
+  ) {
+    return true;
+  }
+  const parts = lower.split('.').map((p) => parseInt(p, 10));
+  if (parts.length === 4 && parts.every((p) => !Number.isNaN(p))) {
+    if (parts[0] === 10) return true;
+    if (parts[0] === 127) return true;
+    if (parts[0] === 0) return true;
+    if (parts[0] === 169 && parts[1] === 254) return true;
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+    if (parts[0] === 192 && parts[1] === 168) return true;
+  }
+  return false;
+}
+
 export async function fetchRemoteImage(urlStr: string): Promise<ProcessedImage> {
+  const parsed = new URL(urlStr);
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Unsupported protocol: ${parsed.protocol}`);
+  }
+  if (isPrivateOrLoopbackHost(parsed.hostname)) {
+    throw new Error(`Access to private or loopback host is forbidden: ${parsed.hostname}`);
+  }
+
   try {
     const response = await fetch(urlStr, {
       signal: AbortSignal.timeout(15000), // 15s timeout
@@ -120,19 +159,23 @@ export async function fetchRemoteImage(urlStr: string): Promise<ProcessedImage> 
 
     if (response.body) {
       const reader = response.body.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          totalLength += value.byteLength;
-          if (totalLength > MAX_IMAGE_SIZE_BYTES) {
-            await reader.cancel();
-            throw new Error(
-              `Remote image exceeds ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)}MB size limit.`,
-            );
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            totalLength += value.byteLength;
+            if (totalLength > MAX_IMAGE_SIZE_BYTES) {
+              await reader.cancel();
+              throw new Error(
+                `Remote image exceeds ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)}MB size limit.`,
+              );
+            }
+            chunks.push(value);
           }
-          chunks.push(value);
         }
+      } finally {
+        reader.releaseLock();
       }
     } else {
       const arrayBuffer = await response.arrayBuffer();
@@ -174,8 +217,23 @@ export async function fetchRemoteImage(urlStr: string): Promise<ProcessedImage> 
   }
 }
 
+export function isAllowedLocalPath(resolvedPath: string): boolean {
+  const allowed = process.env.ALLOWED_IMAGE_DIRS;
+  if (!allowed) return true;
+  const dirs = allowed
+    .split(path.delimiter)
+    .map((d) => path.resolve(resolveHomePath(d.trim())))
+    .filter(Boolean);
+  if (dirs.length === 0) return true;
+  return dirs.some((dir) => resolvedPath === dir || resolvedPath.startsWith(dir + path.sep));
+}
+
 export async function loadLocalImage(filePath: string): Promise<ProcessedImage> {
   const resolved = path.resolve(resolveHomePath(filePath));
+
+  if (!isAllowedLocalPath(resolved)) {
+    throw new Error(`Access to file path is outside allowed image directories: ${resolved}`);
+  }
 
   let stat: fs.Stats;
   try {

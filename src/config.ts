@@ -11,29 +11,22 @@ export const DEFAULT_MODELS: Record<SupportedSdk, string> = {
 export const DEFAULT_VISION_SYSTEM_PROMPT =
   'You are an expert multimodal computer vision assistant. Provide clear, accurate, and highly detailed analysis of the provided images. Identify and describe all visible objects, spatial relationships, text, colors, materials, structure, and context. Answer questions thoroughly and precisely.';
 
-export function inferSdk(apiKey?: string, model?: string): SupportedSdk {
-  if (apiKey?.startsWith('sk-ant-')) return 'anthropic';
-  if (apiKey?.startsWith('AIza')) return 'google';
-
-  if (model) {
-    const lower = model.toLowerCase();
-    if (lower.startsWith('claude')) return 'anthropic';
-    if (lower.startsWith('gemini')) return 'google';
-  }
-
-  return 'openai';
-}
-
 export function getConfig(): AppConfig {
-  const apiKey = process.env.API_KEY;
-  let baseUrl = process.env.BASE_URL;
-  const defaultModel = process.env.DEFAULT_MODEL;
+  const apiKey = process.env.API_KEY?.trim() || undefined;
+  let baseUrl = process.env.BASE_URL?.trim() || undefined;
+  const defaultModel = process.env.DEFAULT_MODEL?.trim() || undefined;
 
-  const sdkEnv = process.env.SDK?.toLowerCase();
-  const sdk =
-    sdkEnv && SUPPORTED_SDKS.includes(sdkEnv as SupportedSdk)
-      ? (sdkEnv as SupportedSdk)
-      : inferSdk(apiKey, defaultModel);
+  const sdkEnv = process.env.SDK?.trim().toLowerCase();
+  let sdk: SupportedSdk = 'openai';
+
+  if (sdkEnv) {
+    if (!SUPPORTED_SDKS.includes(sdkEnv as SupportedSdk)) {
+      throw new Error(
+        `Unsupported SDK: "${sdkEnv}". Supported SDKs: ${SUPPORTED_SDKS.join(', ')}`,
+      );
+    }
+    sdk = sdkEnv as SupportedSdk;
+  }
 
   if (!baseUrl && apiKey?.startsWith('sk-or-')) {
     baseUrl = 'https://openrouter.ai/api/v1';

@@ -9,7 +9,11 @@ async function main() {
   const server = createServer();
   const transport = new StdioServerTransport();
 
+  let isShuttingDown = false;
   const shutdown = async () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
     const forceExit = setTimeout(() => process.exit(1), 3000);
     forceExit.unref();
     try {

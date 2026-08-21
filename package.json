@@ -40,7 +40,7 @@
     "anthropic",
     "gemini"
   ],
-  "author": "",
+  "author": "Paul Bradley",
   "license": "MIT",
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.40",

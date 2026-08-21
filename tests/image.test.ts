@@ -43,8 +43,14 @@ describe('Image Module', () => {
   });
 
   describe('resolveHomePath', () => {
-    it('should expand ~ to home directory', () => {
+    it('should expand ~ and ~/ to home directory', () => {
       const result = resolveHomePath('~/test.png');
+      expect(result).toBe(path.join(os.homedir(), 'test.png'));
+      expect(resolveHomePath('~')).toBe(os.homedir());
+    });
+
+    it('should expand Windows style ~\\ to home directory', () => {
+      const result = resolveHomePath('~\\test.png');
       expect(result).toBe(path.join(os.homedir(), 'test.png'));
     });
 
@@ -87,6 +93,12 @@ describe('Image Module', () => {
         'Only image/* formats are supported',
       );
     });
+
+    it('should throw error if decoded base64 data is not a valid image format', () => {
+      expect(() => parseDataUrl('data:image/png;base64,VGhpcyBpcyBub3QgYW4gaW1hZ2U=')).toThrow(
+        'not a recognized image format',
+      );
+    });
   });
 
   describe('loadLocalImage security & validation', () => {
@@ -116,6 +128,14 @@ describe('Image Module', () => {
       await expect(loadLocalImage(noExtensionSecretPath)).rejects.toThrow(
         'recognized image format',
       );
+    });
+
+    it('should respect ALLOWED_IMAGE_DIRS restriction', async () => {
+      process.env.ALLOWED_IMAGE_DIRS = '/some/other/folder';
+      await expect(loadLocalImage(sampleImagePath)).rejects.toThrow(
+        'outside allowed image directories',
+      );
+      delete process.env.ALLOWED_IMAGE_DIRS;
     });
   });
 
@@ -203,6 +223,24 @@ describe('Image Module', () => {
       } as unknown as Response);
 
       await expect(fetchRemoteImage('https://example.com/404.png')).rejects.toThrow('HTTP 404');
+    });
+
+    it('should block SSRF requests to loopback and private IP hosts', async () => {
+      await expect(fetchRemoteImage('http://localhost/secret.png')).rejects.toThrow(
+        'Access to private or loopback host is forbidden',
+      );
+      await expect(fetchRemoteImage('http://127.0.0.1:8080/photo.jpg')).rejects.toThrow(
+        'Access to private or loopback host is forbidden',
+      );
+      await expect(fetchRemoteImage('http://169.254.169.254/latest/meta-data')).rejects.toThrow(
+        'Access to private or loopback host is forbidden',
+      );
+      await expect(fetchRemoteImage('http://192.168.1.1/router.png')).rejects.toThrow(
+        'Access to private or loopback host is forbidden',
+      );
+      await expect(fetchRemoteImage('http://10.0.0.5/internal.png')).rejects.toThrow(
+        'Access to private or loopback host is forbidden',
+      );
     });
   });
 

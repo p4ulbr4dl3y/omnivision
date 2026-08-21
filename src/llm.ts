@@ -60,7 +60,9 @@ export async function runVisionAnalysis(options: {
     mediaType: img.mimeType,
   }));
 
-  const timeoutMs = parseInt(process.env.REQUEST_TIMEOUT_MS || '', 10) || 120000;
+  const rawTimeout = process.env.REQUEST_TIMEOUT_MS?.trim();
+  const parsedTimeout = rawTimeout ? parseInt(rawTimeout, 10) : Number.NaN;
+  const timeoutMs = Number.isInteger(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 120000;
 
   const result = await generateText({
     model,

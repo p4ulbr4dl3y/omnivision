@@ -46,11 +46,13 @@ describe('LLM Module', () => {
 
   it('should initialize Anthropic and Google SDKs correctly', () => {
     process.env.API_KEY = 'sk-ant-test-key';
+    process.env.SDK = 'anthropic';
     const anthropicResult = getModel();
     expect(anthropicResult.sdk).toBe('anthropic');
     expect(anthropicResult.modelName).toBe('claude-3-5-sonnet-20241022');
 
     process.env.API_KEY = 'AIzaSyTestKey';
+    process.env.SDK = 'google';
     const googleResult = getModel();
     expect(googleResult.sdk).toBe('google');
     expect(googleResult.modelName).toBe('gemini-1.5-flash');

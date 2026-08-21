@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { getConfig, inferSdk } from '../src/config.js';
+import { getConfig } from '../src/config.js';
 
 describe('Config Module', () => {
   const originalEnv = process.env;
@@ -16,18 +16,23 @@ describe('Config Module', () => {
     process.env = originalEnv;
   });
 
-  it('should infer sdk from API key prefixes', () => {
-    expect(inferSdk('sk-or-v1-12345')).toBe('openai');
-    expect(inferSdk('sk-ant-api03-12345')).toBe('anthropic');
-    expect(inferSdk('AIzaSyD-12345')).toBe('google');
-    expect(inferSdk('sk-proj-12345')).toBe('openai');
+  it('should default to openai SDK when SDK is not set', () => {
+    process.env.API_KEY = 'sk-test-key';
+    const config = getConfig();
+    expect(config.sdk).toBe('openai');
   });
 
-  it('should infer sdk from model names', () => {
-    expect(inferSdk(undefined, 'claude-3-5-sonnet-20241022')).toBe('anthropic');
-    expect(inferSdk(undefined, 'gemini-1.5-flash')).toBe('google');
-    expect(inferSdk(undefined, 'gpt-4o')).toBe('openai');
-    expect(inferSdk(undefined, 'nvidia/nemotron-3-nano')).toBe('openai');
+  it('should use explicit SDK env variable', () => {
+    process.env.API_KEY = 'sk-ant-test-key';
+    process.env.SDK = 'anthropic';
+
+    const config = getConfig();
+    expect(config.sdk).toBe('anthropic');
+  });
+
+  it('should throw error for unsupported SDK env variable', () => {
+    process.env.SDK = 'unsupported-sdk';
+    expect(() => getConfig()).toThrow('Unsupported SDK');
   });
 
   it('should auto-detect OpenRouter baseUrl from API_KEY prefix', () => {
@@ -42,12 +47,15 @@ describe('Config Module', () => {
     expect(config.defaultSystemPrompt).toContain('multimodal computer vision assistant');
   });
 
-  it('should prioritize explicit SDK env variable over inference', () => {
-    process.env.API_KEY = 'sk-proj-openai-key';
-    process.env.SDK = 'anthropic';
+  it('should trim empty string environment variables', () => {
+    process.env.API_KEY = '  ';
+    process.env.BASE_URL = '   ';
+    process.env.DEFAULT_MODEL = '  ';
 
     const config = getConfig();
-    expect(config.sdk).toBe('anthropic');
+    expect(config.apiKey).toBeUndefined();
+    expect(config.baseUrl).toBeUndefined();
+    expect(config.defaultModel).toBeUndefined();
   });
 
   it('should fallback to 4096 when DEFAULT_MAX_TOKENS is invalid or non-positive', () => {
