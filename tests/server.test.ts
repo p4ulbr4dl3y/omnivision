@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createServer } from '../src/server.js';
-import * as llmModule from '../src/llm.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as imageModule from '../src/image.js';
+import * as llmModule from '../src/llm.js';
+import { createServer } from '../src/server.js';
 
 describe('MCP Server Integration', () => {
   let client: Client;
@@ -46,8 +46,8 @@ describe('MCP Server Integration', () => {
 
     vi.spyOn(llmModule, 'runVisionAnalysis').mockResolvedValueOnce({
       text: 'Analysis result: vessel identified.',
-      provider: 'openrouter',
-      model: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
+      sdk: 'openai',
+      model: 'gpt-4o',
       usage: { totalTokens: 50 },
     });
 
@@ -74,8 +74,8 @@ describe('MCP Server Integration', () => {
 
     const runSpy = vi.spyOn(llmModule, 'runVisionAnalysis').mockResolvedValueOnce({
       text: 'Detailed description of the image.',
-      provider: 'openrouter',
-      model: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
+      sdk: 'openai',
+      model: 'gpt-4o',
     });
 
     const response = await client.callTool({
@@ -89,7 +89,7 @@ describe('MCP Server Integration', () => {
     expect(runSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: 'Describe this image in detail.',
-      })
+      }),
     );
   });
 

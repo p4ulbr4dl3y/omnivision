@@ -18,8 +18,9 @@ Fast, universal MCP server for multimodal image analysis using any vision LLM.
       "args": ["-y", "omnivision"],
       "env": {
         "API_KEY": "your-api-key",
+        "SDK": "openai | anthropic | google",
+        "BASE_URL": "optional-base-url (e.g. https://openrouter.ai/api/v1, http://localhost:11434/v1)",
         "DEFAULT_MODEL": "optional-model-name",
-        "BASE_URL": "optional-base-url",
         "DEFAULT_MAX_TOKENS": "4096",
         "DEFAULT_SYSTEM_PROMPT": "optional-system-prompt"
       }

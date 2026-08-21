@@ -1,16 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  resolveHomePath,
+  fetchRemoteImage,
   isDataUrl,
   isHttpUrl,
-  parseDataUrl,
-  loadLocalImage,
   loadImage,
   loadImages,
-  fetchRemoteImage,
+  loadLocalImage,
+  parseDataUrl,
+  resolveHomePath,
 } from '../src/image.js';
 
 describe('Image Module', () => {
@@ -19,9 +19,10 @@ describe('Image Module', () => {
   const emptyImagePath = path.join(tempDir, 'empty.png');
   const nonImageFilePath = path.join(tempDir, 'text.txt');
   const noExtensionSecretPath = path.join(tempDir, 'id_rsa');
-  
+
   // 1x1 transparent PNG base64
-  const sampleBase64Png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const sampleBase64Png =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
   const sampleDataUrl = `data:image/png;base64,${sampleBase64Png}`;
 
   beforeEach(() => {
@@ -82,7 +83,9 @@ describe('Image Module', () => {
     });
 
     it('should throw error if MIME is not image/*', () => {
-      expect(() => parseDataUrl('data:text/plain;base64,SGVsbG8=')).toThrow('Only image/* formats are supported');
+      expect(() => parseDataUrl('data:text/plain;base64,SGVsbG8=')).toThrow(
+        'Only image/* formats are supported',
+      );
     });
   });
 
@@ -96,7 +99,9 @@ describe('Image Module', () => {
     });
 
     it('should throw error if file does not exist', async () => {
-      await expect(loadLocalImage('/non/existent/path/photo.jpg')).rejects.toThrow('Image file not found');
+      await expect(loadLocalImage('/non/existent/path/photo.jpg')).rejects.toThrow(
+        'Image file not found',
+      );
     });
 
     it('should throw error if file is empty', async () => {
@@ -104,11 +109,13 @@ describe('Image Module', () => {
     });
 
     it('should throw error if file is not an image', async () => {
-      await expect(loadLocalImage(nonImageFilePath)).rejects.toThrow('File is not a valid image format');
+      await expect(loadLocalImage(nonImageFilePath)).rejects.toThrow('recognized image format');
     });
 
     it('should block reading non-image files without extension (arbitrary file read protection)', async () => {
-      await expect(loadLocalImage(noExtensionSecretPath)).rejects.toThrow('File is not a valid image format');
+      await expect(loadLocalImage(noExtensionSecretPath)).rejects.toThrow(
+        'recognized image format',
+      );
     });
   });
 
@@ -119,7 +126,7 @@ describe('Image Module', () => {
         ok: true,
         status: 200,
         headers: new Headers({ 'content-type': 'image/png' }),
-        arrayBuffer: async () => mockBuffer.buffer,
+        arrayBuffer: async () => new Uint8Array(mockBuffer).buffer,
       } as any);
 
       const result = await fetchRemoteImage('https://example.com/photo.png');
@@ -128,15 +135,17 @@ describe('Image Module', () => {
       expect(result.image).toBeInstanceOf(Uint8Array);
     });
 
-    it('should throw error if remote URL returns non-image content type', async () => {
+    it('should throw error if remote URL returns non-image bytes', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
         headers: new Headers({ 'content-type': 'text/html; charset=utf-8' }),
-        arrayBuffer: async () => Buffer.from('<html></html>').buffer,
+        arrayBuffer: async () => new Uint8Array(Buffer.from('<html></html>')).buffer,
       } as any);
 
-      await expect(fetchRemoteImage('https://example.com/not-an-image')).rejects.toThrow('Remote URL did not return an image content-type');
+      await expect(fetchRemoteImage('https://example.com/not-an-image')).rejects.toThrow(
+        'recognized image format',
+      );
     });
 
     it('should throw error if fetch returns non-200 status', async () => {

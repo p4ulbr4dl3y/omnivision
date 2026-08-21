@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getModel, runVisionAnalysis } from '../src/llm.js';
 import * as aiModule from 'ai';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getModel, runVisionAnalysis } from '../src/llm.js';
 
 vi.mock('ai', async (importOriginal) => {
   const actual = await importOriginal<typeof import('ai')>();
@@ -30,10 +30,10 @@ describe('LLM Module', () => {
     expect(() => getModel()).toThrow('Missing API_KEY');
   });
 
-  it('should initialize OpenRouter from API_KEY', () => {
+  it('should initialize OpenRouter from API_KEY as openai sdk with custom baseUrl', () => {
     process.env.API_KEY = 'sk-or-universal-key';
     const result = getModel();
-    expect(result.provider).toBe('openrouter');
+    expect(result.sdk).toBe('openai');
     expect(result.model).toBeDefined();
   });
 
@@ -61,7 +61,7 @@ describe('LLM Module', () => {
     });
 
     expect(res.text).toBe('A photo of a blue sailboat on clear water.');
-    expect(res.provider).toBe('openai');
+    expect(res.sdk).toBe('openai');
     expect(res.model).toBe('gpt-4o');
     expect(res.usage?.totalTokens).toBe(135);
     expect(aiModule.generateText).toHaveBeenCalledTimes(1);

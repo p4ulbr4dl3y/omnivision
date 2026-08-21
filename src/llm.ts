@@ -1,86 +1,48 @@
-import { generateText, type LanguageModel } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { getConfig, DEFAULT_MODELS, inferProvider } from './config.js';
-import type { ProcessedImage, VisionAnalysisResult } from './types.js';
+import { createOpenAI } from '@ai-sdk/openai';
+import { generateText, type LanguageModel } from 'ai';
+import { DEFAULT_MODELS, getConfig } from './config.js';
+import type { AppConfig, ProcessedImage, SupportedSdk, VisionAnalysisResult } from './types.js';
 
-export function getModel(): { model: LanguageModel; provider: string; modelName: string } {
-  const config = getConfig();
-  const apiKey = config.apiKey;
-  const baseUrl = config.baseUrl;
-  const provider = config.defaultProvider;
-  const modelName = config.defaultModel || DEFAULT_MODELS[provider] || 'gpt-4o';
+export function getModel(config: AppConfig = getConfig()): {
+  model: LanguageModel;
+  sdk: SupportedSdk;
+  modelName: string;
+} {
+  const { apiKey, baseUrl, sdk, defaultModel } = config;
+  const modelName = defaultModel || DEFAULT_MODELS[sdk];
 
-  if (!apiKey && provider !== 'ollama') {
+  if (!modelName) {
+    throw new Error(`No default model configured for SDK: ${sdk}. Set DEFAULT_MODEL.`);
+  }
+
+  const isLocalEndpoint =
+    baseUrl?.includes('localhost') ||
+    baseUrl?.includes('127.0.0.1') ||
+    baseUrl?.includes('0.0.0.0');
+
+  if (!apiKey && !isLocalEndpoint) {
     throw new Error('Missing API_KEY in environment variables.');
   }
 
+  const effectiveApiKey = apiKey ?? (isLocalEndpoint ? 'local' : '');
+
   let model: LanguageModel;
 
-  switch (provider) {
-    case 'openrouter': {
-      const client = createOpenAI({
-        apiKey: apiKey!,
-        baseURL: baseUrl || 'https://openrouter.ai/api/v1',
-      });
-      model = client(modelName);
+  switch (sdk) {
+    case 'anthropic':
+      model = createAnthropic({ apiKey: effectiveApiKey, baseURL: baseUrl })(modelName);
       break;
-    }
-
-    case 'openai': {
-      const client = createOpenAI({
-        apiKey: apiKey!,
-        baseURL: baseUrl,
-      });
-      model = client(modelName);
+    case 'google':
+      model = createGoogleGenerativeAI({ apiKey: effectiveApiKey, baseURL: baseUrl })(modelName);
       break;
-    }
-
-    case 'anthropic': {
-      const client = createAnthropic({
-        apiKey: apiKey!,
-        baseURL: baseUrl,
-      });
-      model = client(modelName);
+    case 'openai':
+      model = createOpenAI({ apiKey: effectiveApiKey, baseURL: baseUrl })(modelName);
       break;
-    }
-
-    case 'google': {
-      const client = createGoogleGenerativeAI({
-        apiKey: apiKey!,
-        baseURL: baseUrl,
-      });
-      model = client(modelName);
-      break;
-    }
-
-    case 'ollama': {
-      const client = createOpenAI({
-        apiKey: 'ollama',
-        baseURL: baseUrl || 'http://localhost:11434/v1',
-      });
-      model = client(modelName);
-      break;
-    }
-
-    case 'custom': {
-      if (!baseUrl) {
-        throw new Error('BASE_URL is required for custom provider.');
-      }
-      const client = createOpenAI({
-        apiKey: apiKey || 'custom',
-        baseURL: baseUrl,
-      });
-      model = client(modelName);
-      break;
-    }
-
-    default:
-      throw new Error(`Unsupported provider: ${provider}`);
   }
 
-  return { model, provider, modelName };
+  return { model, sdk, modelName };
 }
 
 export async function runVisionAnalysis(options: {
@@ -94,7 +56,7 @@ export async function runVisionAnalysis(options: {
   }
 
   const config = getConfig();
-  const { model, provider, modelName } = getModel();
+  const { model, sdk, modelName } = getModel(config);
 
   const fileParts = images.map((img) => ({
     type: 'file' as const,
@@ -108,10 +70,7 @@ export async function runVisionAnalysis(options: {
     messages: [
       {
         role: 'user',
-        content: [
-          { type: 'text' as const, text: prompt },
-          ...fileParts,
-        ],
+        content: [{ type: 'text' as const, text: prompt }, ...fileParts],
       },
     ],
     maxOutputTokens: config.defaultMaxTokens,
@@ -121,7 +80,7 @@ export async function runVisionAnalysis(options: {
 
   return {
     text: result.text,
-    provider,
+    sdk,
     model: modelName,
     usage: {
       inputTokens: result.usage?.inputTokens,

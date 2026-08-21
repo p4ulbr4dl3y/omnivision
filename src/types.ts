@@ -1,4 +1,4 @@
-export type SupportedProvider = 'openrouter' | 'openai' | 'anthropic' | 'google' | 'ollama' | 'custom';
+export type SupportedSdk = 'openai' | 'anthropic' | 'google';
 
 export interface ProcessedImage {
   image: Uint8Array;
@@ -8,7 +8,7 @@ export interface ProcessedImage {
 
 export interface VisionAnalysisResult {
   text: string;
-  provider: string;
+  sdk: SupportedSdk;
   model: string;
   usage?: {
     inputTokens?: number;
@@ -21,7 +21,7 @@ export interface AppConfig {
   apiKey?: string;
   baseUrl?: string;
   defaultModel?: string;
-  defaultProvider: SupportedProvider;
+  sdk: SupportedSdk;
   defaultMaxTokens: number;
   defaultSystemPrompt: string;
 }

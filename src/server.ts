@@ -1,25 +1,35 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
-  ListToolsRequestSchema,
   ErrorCode,
+  ListToolsRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { loadImages } from './image.js';
 import { runVisionAnalysis } from './llm.js';
 
+const DEFAULT_PROMPT = 'Describe this image in detail.';
+
 const AnalyzeImageSchema = z.object({
-  image: z.union([
-    z.string().describe('Path to local image file, URL (https://...), or base64 data URI.'),
-    z.array(z.string()).min(1).max(10).describe('Array of up to 10 image paths, URLs, or base64 data URIs.'),
-  ]).describe('Image source(s) to analyze.'),
+  image: z
+    .union([
+      z.string().describe('Path to local image file, URL (https://...), or base64 data URI.'),
+      z
+        .array(z.string())
+        .min(1)
+        .max(10)
+        .describe('Array of up to 10 image paths, URLs, or base64 data URIs.'),
+    ])
+    .describe('Image source(s) to analyze.'),
   prompt: z
     .string()
     .optional()
-    .default('Describe this image in detail.')
-    .describe('Question or instruction about the image. Defaults to detailed description.'),
+    .describe(`Question or instruction about the image. Defaults to "${DEFAULT_PROMPT}".`),
 });
+
+const toolInputSchema = z.toJSONSchema(AnalyzeImageSchema) as Record<string, unknown>;
+delete toolInputSchema.$schema;
 
 export function createServer(): Server {
   const server = new Server(
@@ -31,7 +41,7 @@ export function createServer(): Server {
       capabilities: {
         tools: {},
       },
-    }
+    },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -39,31 +49,9 @@ export function createServer(): Server {
       tools: [
         {
           name: 'analyze_image',
-          description: 'Analyze, describe, or extract information from images using vision LLM. Accepts local file path, URL, or base64.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              image: {
-                oneOf: [
-                  {
-                    type: 'string',
-                    description: 'Path to local image file, web URL, or base64 data URI.',
-                  },
-                  {
-                    type: 'array',
-                    items: { type: 'string' },
-                    description: 'Array of image paths or URLs.',
-                  },
-                ],
-                description: 'The image(s) to analyze.',
-              },
-              prompt: {
-                type: 'string',
-                description: 'Optional question or instruction (default: "Describe this image in detail.").',
-              },
-            },
-            required: ['image'],
-          },
+          description:
+            'Analyze, describe, or extract information from images using vision LLM. Accepts local file path, URL, or base64.',
+          inputSchema: toolInputSchema,
         },
       ],
     };
@@ -77,9 +65,9 @@ export function createServer(): Server {
         const parsed = AnalyzeImageSchema.parse(args || {});
         const imagesInput = Array.isArray(parsed.image) ? parsed.image : [parsed.image];
         const processedImages = await loadImages(imagesInput);
-        
+
         const result = await runVisionAnalysis({
-          prompt: parsed.prompt || 'Describe this image in detail.',
+          prompt: parsed.prompt ?? DEFAULT_PROMPT,
           images: processedImages,
         });
 
@@ -90,16 +78,11 @@ export function createServer(): Server {
               text: result.text,
             },
           ],
-          metadata: {
-            provider: result.provider,
-            model: result.model,
-            usage: result.usage,
-          },
         };
       }
 
       throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
-    } catch (error: any) {
+    } catch (error) {
       if (error instanceof z.ZodError) {
         const issues = error.issues || [];
         return {
@@ -107,7 +90,7 @@ export function createServer(): Server {
           content: [
             {
               type: 'text',
-              text: `Input validation error: ${issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+              text: `Input validation error: ${issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
             },
           ],
         };
@@ -118,7 +101,7 @@ export function createServer(): Server {
         content: [
           {
             type: 'text',
-            text: `Error executing tool ${name}: ${error.message || String(error)}`,
+            text: `Error executing tool ${name}: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };

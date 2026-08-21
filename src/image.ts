@@ -1,8 +1,40 @@
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
-import mime from 'mime-types';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import type { ProcessedImage } from './types.js';
+
+// Проверка по magic-bytes, а не по расширению — защита от чтения не-картинок.
+function sniffImageMime(buf: Uint8Array): string | null {
+  if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47)
+    return 'image/png';
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (
+    buf.length >= 6 &&
+    buf[0] === 0x47 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x38 &&
+    (buf[4] === 0x37 || buf[4] === 0x39) &&
+    buf[5] === 0x61
+  )
+    return 'image/gif';
+  if (
+    buf.length >= 12 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x45 &&
+    buf[10] === 0x42 &&
+    buf[11] === 0x50
+  )
+    return 'image/webp';
+  if (buf.length >= 2 && buf[0] === 0x42 && buf[1] === 0x4d) return 'image/bmp';
+  if (
+    buf.length >= 4 &&
+    ((buf[0] === 0x49 && buf[1] === 0x49 && buf[2] === 0x2a && buf[3] === 0x00) ||
+      (buf[0] === 0x4d && buf[1] === 0x4d && buf[2] === 0x00 && buf[3] === 0x2a))
+  )
+    return 'image/tiff';
+  return null;
+}
 
 export const MAX_IMAGE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB max per image
 
@@ -29,7 +61,7 @@ export function parseDataUrl(dataUrl: string): ProcessedImage {
 
   const mimeType = matches[1];
   const base64Data = matches[2];
-  
+
   if (!mimeType.startsWith('image/')) {
     throw new Error(`Invalid MIME type: ${mimeType}. Only image/* formats are supported.`);
   }
@@ -57,19 +89,9 @@ export async function fetchRemoteImage(urlStr: string): Promise<ProcessedImage> 
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch image from URL: ${urlStr} (HTTP ${response.status} ${response.statusText})`);
-    }
-
-    const contentType = response.headers.get('content-type') || '';
-    const cleanMime = contentType.split(';')[0].trim();
-
-    if (!cleanMime || !cleanMime.startsWith('image/')) {
-      throw new Error(`Remote URL did not return an image content-type (received: '${contentType || 'empty'}')`);
-    }
-
-    const contentLength = response.headers.get('content-length');
-    if (contentLength && parseInt(contentLength, 10) > MAX_IMAGE_SIZE_BYTES) {
-      throw new Error(`Remote image exceeds ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)}MB size limit.`);
+      throw new Error(
+        `Failed to fetch image from URL: ${urlStr} (HTTP ${response.status} ${response.statusText})`,
+      );
     }
 
     const arrayBuffer = await response.arrayBuffer();
@@ -82,13 +104,18 @@ export async function fetchRemoteImage(urlStr: string): Promise<ProcessedImage> 
       throw new Error(`Remote image exceeds ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)}MB size limit.`);
     }
 
+    const mimeType = sniffImageMime(new Uint8Array(arrayBuffer));
+    if (!mimeType) {
+      throw new Error(`Remote URL did not return a recognized image format: ${urlStr}`);
+    }
+
     return {
       image: new Uint8Array(arrayBuffer),
-      mimeType: cleanMime,
+      mimeType,
       sourceType: 'url',
     };
-  } catch (error: any) {
-    if (error.name === 'TimeoutError') {
+  } catch (error) {
+    if (error instanceof Error && error.name === 'TimeoutError') {
       throw new Error(`Network timeout (15s) while fetching image from: ${urlStr}`);
     }
     throw error;
@@ -112,16 +139,18 @@ export async function loadLocalImage(filePath: string): Promise<ProcessedImage> 
   }
 
   if (stat.size > MAX_IMAGE_SIZE_BYTES) {
-    throw new Error(`File size (${(stat.size / (1024 * 1024)).toFixed(1)}MB) exceeds maximum limit of ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)}MB.`);
-  }
-
-  const detectedMime = mime.lookup(resolved);
-  // Strict security check: prevent reading non-image or arbitrary text files (e.g. .ssh/id_rsa, /etc/passwd)
-  if (!detectedMime || !detectedMime.startsWith('image/')) {
-    throw new Error(`File is not a valid image format: ${resolved} (detected MIME: ${detectedMime || 'unknown'})`);
+    throw new Error(
+      `File size (${(stat.size / (1024 * 1024)).toFixed(1)}MB) exceeds maximum limit of ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)}MB.`,
+    );
   }
 
   const buffer = await fs.promises.readFile(resolved);
+
+  // Проверка по содержимому (magic-bytes), а не по расширению.
+  const detectedMime = sniffImageMime(new Uint8Array(buffer));
+  if (!detectedMime) {
+    throw new Error(`File is not a recognized image format: ${resolved}`);
+  }
 
   return {
     image: new Uint8Array(buffer),
@@ -160,5 +189,5 @@ export async function loadImages(inputs: string[]): Promise<ProcessedImage[]> {
     throw new Error('Maximum of 10 images allowed per request.');
   }
 
-  return await Promise.all(inputs.map(img => loadImage(img)));
+  return await Promise.all(inputs.map((img) => loadImage(img)));
 }
