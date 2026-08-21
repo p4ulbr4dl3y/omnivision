@@ -4,6 +4,7 @@
   "description": "Universal MCP vision server for analyzing images with any LLM (OpenRouter, OpenAI, Anthropic, Google Gemini, Ollama)",
   "type": "module",
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
     "omnivision": "dist/index.js"
   },
@@ -54,7 +55,7 @@
     "@biomejs/biome": "^2.5.9",
     "@types/node": "^26.2.0",
     "tsx": "^4.23.12",
-    "typescript": "^7.0.2",
+    "typescript": "^5.8.2",
     "vitest": "^4.1.11"
   }
 }

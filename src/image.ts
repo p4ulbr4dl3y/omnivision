@@ -20,6 +20,10 @@ function sniffImageMime(buf: Uint8Array): string | null {
     return 'image/gif';
   if (
     buf.length >= 12 &&
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
     buf[8] === 0x57 &&
     buf[9] === 0x45 &&
     buf[10] === 0x42 &&
@@ -54,18 +58,25 @@ export function isHttpUrl(str: string): boolean {
 }
 
 export function parseDataUrl(dataUrl: string): ProcessedImage {
-  const matches = dataUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-  if (!matches) {
+  const commaIndex = dataUrl.indexOf(',');
+  if (commaIndex === -1 || !dataUrl.startsWith('data:')) {
     throw new Error('Invalid data URI format for image. Expected data:image/<type>;base64,<data>');
   }
 
-  const mimeType = matches[1];
-  const base64Data = matches[2];
+  const meta = dataUrl.slice(5, commaIndex);
+  const parts = meta.split(';');
+  const mimeType = parts[0]?.trim();
+  const isBase64 = parts.some((p) => p.trim() === 'base64');
+
+  if (!mimeType || !isBase64) {
+    throw new Error('Invalid data URI format for image. Expected data:image/<type>;base64,<data>');
+  }
 
   if (!mimeType.startsWith('image/')) {
     throw new Error(`Invalid MIME type: ${mimeType}. Only image/* formats are supported.`);
   }
 
+  const base64Data = dataUrl.slice(commaIndex + 1);
   const buffer = Buffer.from(base64Data, 'base64');
   if (buffer.length === 0) {
     throw new Error('Base64 image payload is empty.');
@@ -94,23 +105,64 @@ export async function fetchRemoteImage(urlStr: string): Promise<ProcessedImage> 
       );
     }
 
-    const arrayBuffer = await response.arrayBuffer();
+    const contentLength = response.headers.get('content-length');
+    if (contentLength) {
+      const parsedLength = parseInt(contentLength, 10);
+      if (!Number.isNaN(parsedLength) && parsedLength > MAX_IMAGE_SIZE_BYTES) {
+        throw new Error(
+          `Remote image exceeds ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)}MB size limit.`,
+        );
+      }
+    }
 
-    if (arrayBuffer.byteLength === 0) {
+    const chunks: Uint8Array[] = [];
+    let totalLength = 0;
+
+    if (response.body) {
+      const reader = response.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          totalLength += value.byteLength;
+          if (totalLength > MAX_IMAGE_SIZE_BYTES) {
+            await reader.cancel();
+            throw new Error(
+              `Remote image exceeds ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)}MB size limit.`,
+            );
+          }
+          chunks.push(value);
+        }
+      }
+    } else {
+      const arrayBuffer = await response.arrayBuffer();
+      if (arrayBuffer.byteLength > MAX_IMAGE_SIZE_BYTES) {
+        throw new Error(
+          `Remote image exceeds ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)}MB size limit.`,
+        );
+      }
+      chunks.push(new Uint8Array(arrayBuffer));
+      totalLength = arrayBuffer.byteLength;
+    }
+
+    if (totalLength === 0) {
       throw new Error(`Remote image at ${urlStr} is empty (0 bytes).`);
     }
 
-    if (arrayBuffer.byteLength > MAX_IMAGE_SIZE_BYTES) {
-      throw new Error(`Remote image exceeds ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)}MB size limit.`);
+    const combined = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.byteLength;
     }
 
-    const mimeType = sniffImageMime(new Uint8Array(arrayBuffer));
+    const mimeType = sniffImageMime(combined);
     if (!mimeType) {
       throw new Error(`Remote URL did not return a recognized image format: ${urlStr}`);
     }
 
     return {
-      image: new Uint8Array(arrayBuffer),
+      image: combined,
       mimeType,
       sourceType: 'url',
     };
@@ -125,11 +177,16 @@ export async function fetchRemoteImage(urlStr: string): Promise<ProcessedImage> 
 export async function loadLocalImage(filePath: string): Promise<ProcessedImage> {
   const resolved = path.resolve(resolveHomePath(filePath));
 
-  if (!fs.existsSync(resolved)) {
-    throw new Error(`Image file not found at path: ${resolved}`);
+  let stat: fs.Stats;
+  try {
+    stat = await fs.promises.stat(resolved);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(`Image file not found at path: ${resolved}`);
+    }
+    throw err;
   }
 
-  const stat = await fs.promises.stat(resolved);
   if (!stat.isFile()) {
     throw new Error(`Path is not a regular file (is directory or socket): ${resolved}`);
   }
@@ -146,7 +203,6 @@ export async function loadLocalImage(filePath: string): Promise<ProcessedImage> 
 
   const buffer = await fs.promises.readFile(resolved);
 
-  // Проверка по содержимому (magic-bytes), а не по расширению.
   const detectedMime = sniffImageMime(new Uint8Array(buffer));
   if (!detectedMime) {
     throw new Error(`File is not a recognized image format: ${resolved}`);

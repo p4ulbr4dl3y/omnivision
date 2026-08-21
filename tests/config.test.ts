@@ -41,4 +41,23 @@ describe('Config Module', () => {
     expect(config.defaultMaxTokens).toBe(8192);
     expect(config.defaultSystemPrompt).toContain('multimodal computer vision assistant');
   });
+
+  it('should prioritize explicit SDK env variable over inference', () => {
+    process.env.API_KEY = 'sk-proj-openai-key';
+    process.env.SDK = 'anthropic';
+
+    const config = getConfig();
+    expect(config.sdk).toBe('anthropic');
+  });
+
+  it('should fallback to 4096 when DEFAULT_MAX_TOKENS is invalid or non-positive', () => {
+    process.env.DEFAULT_MAX_TOKENS = '-100';
+    expect(getConfig().defaultMaxTokens).toBe(4096);
+
+    process.env.DEFAULT_MAX_TOKENS = '0';
+    expect(getConfig().defaultMaxTokens).toBe(4096);
+
+    process.env.DEFAULT_MAX_TOKENS = 'invalid';
+    expect(getConfig().defaultMaxTokens).toBe(4096);
+  });
 });

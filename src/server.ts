@@ -83,14 +83,21 @@ export function createServer(): Server {
 
       throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
     } catch (error) {
+      if (error instanceof McpError) {
+        throw error;
+      }
+
       if (error instanceof z.ZodError) {
         const issues = error.issues || [];
+        const formattedIssues = issues
+          .map((e) => (e.path.length > 0 ? `${e.path.join('.')}: ${e.message}` : e.message))
+          .join(', ');
         return {
           isError: true,
           content: [
             {
               type: 'text',
-              text: `Input validation error: ${issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+              text: `Input validation error: ${formattedIssues}`,
             },
           ],
         };

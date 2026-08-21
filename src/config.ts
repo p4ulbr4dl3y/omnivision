@@ -39,9 +39,10 @@ export function getConfig(): AppConfig {
     baseUrl = 'https://openrouter.ai/api/v1';
   }
 
-  const rawMaxTokens = process.env.DEFAULT_MAX_TOKENS;
+  const rawMaxTokens = process.env.DEFAULT_MAX_TOKENS?.trim();
+  const parsedMaxTokens = rawMaxTokens ? parseInt(rawMaxTokens, 10) : Number.NaN;
   const defaultMaxTokens =
-    rawMaxTokens && !Number.isNaN(Number(rawMaxTokens)) ? parseInt(rawMaxTokens, 10) : 4096;
+    Number.isInteger(parsedMaxTokens) && parsedMaxTokens > 0 ? parsedMaxTokens : 4096;
   const defaultSystemPrompt = process.env.DEFAULT_SYSTEM_PROMPT || DEFAULT_VISION_SYSTEM_PROMPT;
 
   return {

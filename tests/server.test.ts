@@ -60,7 +60,47 @@ describe('MCP Server Integration', () => {
     });
 
     expect(response.isError).toBeFalsy();
-    expect((response.content[0] as any).text).toBe('Analysis result: vessel identified.');
+    const firstContent = response.content[0];
+    expect(firstContent?.type).toBe('text');
+    if (firstContent?.type === 'text') {
+      expect(firstContent.text).toBe('Analysis result: vessel identified.');
+    }
+  });
+
+  it('should execute analyze_image tool with multiple images', async () => {
+    vi.spyOn(imageModule, 'loadImages').mockResolvedValueOnce([
+      {
+        image: new Uint8Array([1, 2, 3]),
+        mimeType: 'image/png',
+        sourceType: 'local',
+      },
+      {
+        image: new Uint8Array([4, 5, 6]),
+        mimeType: 'image/jpeg',
+        sourceType: 'local',
+      },
+    ]);
+
+    vi.spyOn(llmModule, 'runVisionAnalysis').mockResolvedValueOnce({
+      text: 'Comparing two images.',
+      sdk: 'openai',
+      model: 'gpt-4o',
+    });
+
+    const response = await client.callTool({
+      name: 'analyze_image',
+      arguments: {
+        image: ['/fake/img1.png', '/fake/img2.jpg'],
+        prompt: 'Compare these two images',
+      },
+    });
+
+    expect(response.isError).toBeFalsy();
+    const firstContent = response.content[0];
+    expect(firstContent?.type).toBe('text');
+    if (firstContent?.type === 'text') {
+      expect(firstContent.text).toBe('Comparing two images.');
+    }
   });
 
   it('should execute analyze_image tool without prompt (using default prompt)', async () => {
@@ -102,6 +142,19 @@ describe('MCP Server Integration', () => {
     });
 
     expect(response.isError).toBe(true);
-    expect((response.content[0] as any).text).toContain('Input validation error');
+    const firstContent = response.content[0];
+    expect(firstContent?.type).toBe('text');
+    if (firstContent?.type === 'text') {
+      expect(firstContent.text).toContain('Input validation error');
+    }
+  });
+
+  it('should throw McpError when tool is unknown', async () => {
+    await expect(
+      client.callTool({
+        name: 'unknown_tool',
+        arguments: {},
+      }),
+    ).rejects.toThrow('Unknown tool');
   });
 });

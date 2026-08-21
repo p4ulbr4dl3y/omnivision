@@ -119,6 +119,38 @@ describe('Image Module', () => {
     });
   });
 
+  describe('MIME sniffing & formats', () => {
+    it('should detect JPEG, GIF, WEBP, BMP, and TIFF formats', async () => {
+      // JPEG magic bytes (FF D8 FF)
+      const jpegPath = path.join(tempDir, 'test.jpg');
+      fs.writeFileSync(jpegPath, Buffer.from([0xff, 0xd8, 0xff, 0xe0]));
+      expect((await loadLocalImage(jpegPath)).mimeType).toBe('image/jpeg');
+
+      // GIF magic bytes (GIF89a)
+      const gifPath = path.join(tempDir, 'test.gif');
+      fs.writeFileSync(gifPath, Buffer.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]));
+      expect((await loadLocalImage(gifPath)).mimeType).toBe('image/gif');
+
+      // WEBP magic bytes (RIFF .... WEBP)
+      const webpPath = path.join(tempDir, 'test.webp');
+      const webpBuf = Buffer.alloc(12);
+      webpBuf.set([0x52, 0x49, 0x46, 0x46], 0); // RIFF
+      webpBuf.set([0x57, 0x45, 0x42, 0x50], 8); // WEBP
+      fs.writeFileSync(webpPath, webpBuf);
+      expect((await loadLocalImage(webpPath)).mimeType).toBe('image/webp');
+
+      // BMP magic bytes (BM)
+      const bmpPath = path.join(tempDir, 'test.bmp');
+      fs.writeFileSync(bmpPath, Buffer.from([0x42, 0x4d]));
+      expect((await loadLocalImage(bmpPath)).mimeType).toBe('image/bmp');
+
+      // TIFF magic bytes (II*\0)
+      const tiffPath = path.join(tempDir, 'test.tiff');
+      fs.writeFileSync(tiffPath, Buffer.from([0x49, 0x49, 0x2a, 0x00]));
+      expect((await loadLocalImage(tiffPath)).mimeType).toBe('image/tiff');
+    });
+  });
+
   describe('fetchRemoteImage', () => {
     it('should fetch remote image and return buffer + mime', async () => {
       const mockBuffer = Buffer.from(sampleBase64Png, 'base64');
@@ -127,12 +159,26 @@ describe('Image Module', () => {
         status: 200,
         headers: new Headers({ 'content-type': 'image/png' }),
         arrayBuffer: async () => new Uint8Array(mockBuffer).buffer,
-      } as any);
+        body: null,
+      } as unknown as Response);
 
       const result = await fetchRemoteImage('https://example.com/photo.png');
       expect(result.sourceType).toBe('url');
       expect(result.mimeType).toBe('image/png');
       expect(result.image).toBeInstanceOf(Uint8Array);
+    });
+
+    it('should reject when Content-Length exceeds limit before reading body', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-length': String(30 * 1024 * 1024) }),
+        body: null,
+      } as unknown as Response);
+
+      await expect(fetchRemoteImage('https://example.com/huge.png')).rejects.toThrow(
+        'exceeds 25MB size limit',
+      );
     });
 
     it('should throw error if remote URL returns non-image bytes', async () => {
@@ -141,7 +187,8 @@ describe('Image Module', () => {
         status: 200,
         headers: new Headers({ 'content-type': 'text/html; charset=utf-8' }),
         arrayBuffer: async () => new Uint8Array(Buffer.from('<html></html>')).buffer,
-      } as any);
+        body: null,
+      } as unknown as Response);
 
       await expect(fetchRemoteImage('https://example.com/not-an-image')).rejects.toThrow(
         'recognized image format',
@@ -153,7 +200,7 @@ describe('Image Module', () => {
         ok: false,
         status: 404,
         statusText: 'Not Found',
-      } as any);
+      } as unknown as Response);
 
       await expect(fetchRemoteImage('https://example.com/404.png')).rejects.toThrow('HTTP 404');
     });

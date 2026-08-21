@@ -16,8 +16,9 @@ describe('LLM Module', () => {
   beforeEach(() => {
     process.env = { ...originalEnv };
     delete process.env.BASE_URL;
-    delete process.env.PROVIDER;
+    delete process.env.SDK;
     delete process.env.DEFAULT_MODEL;
+    delete process.env.API_KEY;
   });
 
   afterEach(() => {
@@ -25,9 +26,15 @@ describe('LLM Module', () => {
     vi.clearAllMocks();
   });
 
-  it('should throw error when API_KEY is missing', () => {
-    delete process.env.API_KEY;
+  it('should throw error when API_KEY is missing and BASE_URL is not provided', () => {
     expect(() => getModel()).toThrow('Missing API_KEY');
+  });
+
+  it('should allow missing API_KEY when BASE_URL is provided', () => {
+    process.env.BASE_URL = 'http://localhost:11434/v1';
+    const result = getModel();
+    expect(result.sdk).toBe('openai');
+    expect(result.model).toBeDefined();
   });
 
   it('should initialize OpenRouter from API_KEY as openai sdk with custom baseUrl', () => {
@@ -35,6 +42,27 @@ describe('LLM Module', () => {
     const result = getModel();
     expect(result.sdk).toBe('openai');
     expect(result.model).toBeDefined();
+  });
+
+  it('should initialize Anthropic and Google SDKs correctly', () => {
+    process.env.API_KEY = 'sk-ant-test-key';
+    const anthropicResult = getModel();
+    expect(anthropicResult.sdk).toBe('anthropic');
+    expect(anthropicResult.modelName).toBe('claude-3-5-sonnet-20241022');
+
+    process.env.API_KEY = 'AIzaSyTestKey';
+    const googleResult = getModel();
+    expect(googleResult.sdk).toBe('google');
+    expect(googleResult.modelName).toBe('gemini-1.5-flash');
+  });
+
+  it('should throw error when images array is empty', async () => {
+    await expect(
+      runVisionAnalysis({
+        prompt: 'test',
+        images: [],
+      }),
+    ).rejects.toThrow('At least one image is required');
   });
 
   it('should call generateText and format result', async () => {
@@ -47,7 +75,7 @@ describe('LLM Module', () => {
         outputTokens: 15,
         totalTokens: 135,
       },
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof aiModule.generateText>>);
 
     const fakeImage = {
       image: new Uint8Array([1, 2, 3]),

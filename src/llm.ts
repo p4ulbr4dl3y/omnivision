@@ -17,16 +17,12 @@ export function getModel(config: AppConfig = getConfig()): {
     throw new Error(`No default model configured for SDK: ${sdk}. Set DEFAULT_MODEL.`);
   }
 
-  const isLocalEndpoint =
-    baseUrl?.includes('localhost') ||
-    baseUrl?.includes('127.0.0.1') ||
-    baseUrl?.includes('0.0.0.0');
-
-  if (!apiKey && !isLocalEndpoint) {
+  // If no apiKey provided, require at least baseUrl (e.g. local / custom inference server)
+  if (!apiKey && !baseUrl) {
     throw new Error('Missing API_KEY in environment variables.');
   }
 
-  const effectiveApiKey = apiKey ?? (isLocalEndpoint ? 'local' : '');
+  const effectiveApiKey = apiKey ?? 'not-needed';
 
   let model: LanguageModel;
 
@@ -64,6 +60,8 @@ export async function runVisionAnalysis(options: {
     mediaType: img.mimeType,
   }));
 
+  const timeoutMs = parseInt(process.env.REQUEST_TIMEOUT_MS || '', 10) || 120000;
+
   const result = await generateText({
     model,
     system: config.defaultSystemPrompt,
@@ -75,17 +73,27 @@ export async function runVisionAnalysis(options: {
     ],
     maxOutputTokens: config.defaultMaxTokens,
     temperature: 0.2,
-    abortSignal: AbortSignal.timeout(60000),
+    abortSignal: AbortSignal.timeout(timeoutMs),
   });
+
+  const usage = result.usage as
+    | {
+        inputTokens?: number;
+        outputTokens?: number;
+        totalTokens?: number;
+        promptTokens?: number;
+        completionTokens?: number;
+      }
+    | undefined;
 
   return {
     text: result.text,
     sdk,
     model: modelName,
     usage: {
-      inputTokens: result.usage?.inputTokens,
-      outputTokens: result.usage?.outputTokens,
-      totalTokens: result.usage?.totalTokens,
+      inputTokens: usage?.inputTokens ?? usage?.promptTokens,
+      outputTokens: usage?.outputTokens ?? usage?.completionTokens,
+      totalTokens: usage?.totalTokens,
     },
   };
 }
