@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "omnivision": "./dist/index.js"
+    "omnivision": "dist/index.js"
   },
   "files": [
     "dist"
